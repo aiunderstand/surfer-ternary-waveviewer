@@ -1,0 +1,21 @@
+$version Generated manually $end
+$timescale 1s $end
+
+ $scope module logic $end
+  $var wire  1 # data $end
+  $var wire  1 $ data_valid $end
+ $upscope $end
+$enddefinitions $end
+
+
+#0
+b1 #
+1$
+#10
+b0 #
+#20
+0$
+#30
+b1 #
+1$
+#40
