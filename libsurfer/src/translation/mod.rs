@@ -12,6 +12,7 @@ use toml::Table;
 use tracing::warn;
 
 mod basic_translators;
+mod btern_translator;
 pub mod clock;
 mod color_translators;
 mod enum_translator;
@@ -427,6 +428,7 @@ pub fn all_translators() -> TranslatorList {
             Arc::new(UnsignedFixedPointTranslator),
             Arc::new(SignedFixedPointTranslator),
             Arc::new(EventTranslator {}),
+            Arc::new(btern_translator::BalancedTernaryTranslator),
         ],
     )
 }
