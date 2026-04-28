@@ -130,8 +130,10 @@
 
       // ping must reply to the specific sender window (cross-origin compatible).
       if (msg.type === "ping") {
+        console.log("[mrcs-surfer-bridge] ping received from", event.origin, "source:", event.source);
         try {
           event.source.postMessage({ type: "pong", sessionId: msg.sessionId }, event.origin);
+          console.log("[mrcs-surfer-bridge] pong sent to", event.origin);
         } catch (e) {
           console.error("[mrcs-surfer-bridge] Failed to send pong:", e);
         }
@@ -144,5 +146,5 @@
     }
   });
 
-  console.log("[mrcs-surfer-bridge] Listening for cross-origin postMessage from MRCS Studio");
+  console.log("[mrcs-surfer-bridge] Ready – listening for cross-origin postMessage from MRCS Studio");
 })();
