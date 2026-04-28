@@ -49,6 +49,8 @@ jobs:
         run: |
           cp examples/btern_translator.wasm surfer/dist/btern_translator.wasm
           cp examples/tvhdl_surfer_test.ghw surfer/dist/tvhdl_surfer_test.ghw
+          cp examples/ternary_data_flip_flop.ghw surfer/dist/ternary_data_flip_flop.ghw
+          cp examples/ternary_full_adder.ghw surfer/dist/ternary_full_adder.ghw
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
