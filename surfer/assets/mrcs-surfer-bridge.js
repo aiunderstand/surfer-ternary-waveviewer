@@ -1,17 +1,18 @@
-// window.postMessage bridge between MRCS Studio (Tab A) and surfer-ternary-waveviewer (Tab B).
+// BroadcastChannel bridge between MRCS Studio (Tab A) and surfer-ternary-waveviewer (Tab B).
 // Loaded from surfer/index.html after integration.js.
-// Works cross-origin: MRCS Studio posts to the surfer window reference it obtained from window.open();
-// this script listens on window and replies to the sender via event.source.postMessage().
+// Both apps are served from the same origin (MRCS Studio at /surfer/).
 (function () {
   "use strict";
 
+  const CHANNEL = "mrcs-surfer-v1";
   const POLL_MS = 100;
   const WASM_TIMEOUT_MS = 30000;
-  const MAX_QUEUED = 2; // header + t=0 frame
+  const MAX_QUEUED = 2; // FR-4.3: header + t=0 frame
 
+  let bc = null;
   let titleSet = false;
 
-  // Startup queue: holds messages received before inject_message is available (FR-4.3).
+  // Startup queue: holds message objects received before inject_message is available (FR-4.3).
   const queue = [];
   let queueDrained = false;
   let pollTimer = null;
@@ -29,11 +30,16 @@
   }
 
   // Apply a decoded message object, calling inject_message as needed.
-  // ping is handled upstream (needs event.source) and never reaches here.
   function applyMsg(msg) {
     switch (msg.type) {
+      case "ping":
+        // Respond with pong on the same channel (FR-2.7 / FR-2.1 handshake)
+        bc.postMessage({ type: "pong", sessionId: msg.sessionId });
+        break;
+
       case "header":
-        // msg.data is an array of integers (0-255): complete MRCS-GHW file (full-reload, FR-3.9).
+        // msg.data is an array of integers (0-255) representing the complete MRCS-GHW file
+        // (header sections + all accumulated SNP/CYC frames — full-reload approach, FR-3.9).
         if (!titleSet) {
           document.title = "Surfer – MRCS Live"; // FR-4.8
           titleSet = true;
@@ -91,15 +97,15 @@
     pollTimer = setTimeout(tick, POLL_MS);
   }
 
-  // Route an incoming message: apply immediately or enqueue (if WASM not ready).
+  // Route an incoming BroadcastChannel message: apply immediately or enqueue.
   function dispatch(msg) {
     if (!msg || typeof msg.type !== "string") {
       console.warn("[mrcs-surfer-bridge] Ignoring malformed message (no string 'type'):", msg);
       return;
     }
 
-    // reset does not call inject_message — handle unconditionally.
-    if (msg.type === "reset") {
+    // ping and reset do not call inject_message — handle unconditionally.
+    if (msg.type === "ping" || msg.type === "reset") {
       applyMsg(msg);
       return;
     }
@@ -120,31 +126,20 @@
     }
   }
 
-  window.addEventListener("message", function (event) {
+  // Bail out gracefully if BroadcastChannel is unavailable (NFR-2.1).
+  if (typeof BroadcastChannel === "undefined") {
+    console.warn("[mrcs-surfer-bridge] BroadcastChannel is not available in this browser. Live streaming disabled.");
+    return;
+  }
+
+  bc = new BroadcastChannel(CHANNEL);
+  bc.onmessage = function (ev) {
     try {
-      const msg = event.data;
-      if (!msg || typeof msg.type !== "string") {
-        console.warn("[mrcs-surfer-bridge] Ignoring malformed message:", msg);
-        return;
-      }
-
-      // ping must reply to the specific sender window (cross-origin compatible).
-      if (msg.type === "ping") {
-        console.log("[mrcs-surfer-bridge] ping received from", event.origin, "source:", event.source);
-        try {
-          event.source.postMessage({ type: "pong", sessionId: msg.sessionId }, event.origin);
-          console.log("[mrcs-surfer-bridge] pong sent to", event.origin);
-        } catch (e) {
-          console.error("[mrcs-surfer-bridge] Failed to send pong:", e);
-        }
-        return;
-      }
-
-      dispatch(msg);
+      dispatch(ev.data);
     } catch (e) {
-      console.error("[mrcs-surfer-bridge] Uncaught error in message handler:", e);
+      console.error("[mrcs-surfer-bridge] Uncaught error in onmessage handler:", e);
     }
-  });
+  };
 
-  console.log("[mrcs-surfer-bridge] Ready – listening for cross-origin postMessage from MRCS Studio");
+  console.log("[mrcs-surfer-bridge] Listening on BroadcastChannel '" + CHANNEL + "'");
 })();
