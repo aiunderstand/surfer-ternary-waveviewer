@@ -1,18 +1,17 @@
-// BroadcastChannel bridge between MRCS Studio (Tab A) and surfer-ternary-waveviewer (Tab B).
+// window.postMessage bridge between MRCS Studio (Tab A) and surfer-ternary-waveviewer (Tab B).
 // Loaded from surfer/index.html after integration.js.
-// Both apps must share the same origin (FR-2.8, NFR-2.2).
+// Works cross-origin: MRCS Studio posts to the surfer window reference it obtained from window.open();
+// this script listens on window and replies to the sender via event.source.postMessage().
 (function () {
   "use strict";
 
-  const CHANNEL = "mrcs-surfer-v1";
   const POLL_MS = 100;
   const WASM_TIMEOUT_MS = 30000;
-  const MAX_QUEUED = 2; // FR-4.3: header + t=0 frame
+  const MAX_QUEUED = 2; // header + t=0 frame
 
-  let bc = null;
   let titleSet = false;
 
-  // Startup queue: holds message objects received before inject_message is available (FR-4.3).
+  // Startup queue: holds messages received before inject_message is available (FR-4.3).
   const queue = [];
   let queueDrained = false;
   let pollTimer = null;
@@ -30,25 +29,17 @@
   }
 
   // Apply a decoded message object, calling inject_message as needed.
+  // ping is handled upstream (needs event.source) and never reaches here.
   function applyMsg(msg) {
     switch (msg.type) {
-      case "ping":
-        // Respond with pong on the same channel (FR-2.7 / FR-2.1 handshake)
-        bc.postMessage({ type: "pong", sessionId: msg.sessionId });
-        break;
-
       case "header":
-        // msg.data is an array of integers (0-255) representing the complete MRCS-GHW file
-        // (header sections + all accumulated SNP/CYC frames — full-reload approach, FR-3.9).
+        // msg.data is an array of integers (0-255): complete MRCS-GHW file (full-reload, FR-3.9).
         if (!titleSet) {
           document.title = "Surfer – MRCS Live"; // FR-4.8
           titleSet = true;
         }
         safeInject(JSON.stringify({ LoadFromData: [msg.data, "Clear"] }));
         // FR-4.7: auto-add all probed scopes after the waveform loads.
-        // msg.scopeCommands is a semicolon-separated batch command string (e.g. "module_add Root").
-        // LoadCommandFromData feeds it into add_batch_commands, which waits for the load to
-        // complete (progress tracker clear) before executing — so no explicit delay is needed.
         if (msg.scopeCommands) {
           const bytes = Array.from(new TextEncoder().encode(msg.scopeCommands));
           safeInject(JSON.stringify({ LoadCommandFromData: bytes }));
@@ -56,13 +47,11 @@
         break;
 
       case "frame":
-        // v2: call inject_message({AppendWaveformFrame: [msg.data]}) when wellen gains
-        // incremental-append support. In v1 the full waveform arrives via {type:"header"} and
-        // SurferConnector never sends frame messages, so this branch is a no-op scaffold.
+        // v2: AppendWaveformFrame when wellen gains incremental-append support. No-op scaffold for v1.
         break;
 
       case "reset":
-        // FR-2.7: clear placeholders and fit the viewport before the next header arrives.
+        // FR-2.7
         safeInject(JSON.stringify("RemovePlaceholders"));
         safeInject(JSON.stringify({ ZoomToFit: { viewport_idx: 0 } }));
         break;
@@ -102,15 +91,15 @@
     pollTimer = setTimeout(tick, POLL_MS);
   }
 
-  // Route an incoming BroadcastChannel message: apply immediately or enqueue.
+  // Route an incoming message: apply immediately or enqueue (if WASM not ready).
   function dispatch(msg) {
     if (!msg || typeof msg.type !== "string") {
       console.warn("[mrcs-surfer-bridge] Ignoring malformed message (no string 'type'):", msg);
       return;
     }
 
-    // ping and reset do not call inject_message — handle unconditionally.
-    if (msg.type === "ping" || msg.type === "reset") {
+    // reset does not call inject_message — handle unconditionally.
+    if (msg.type === "reset") {
       applyMsg(msg);
       return;
     }
@@ -131,20 +120,29 @@
     }
   }
 
-  // Bail out gracefully if BroadcastChannel is unavailable (FR-4.3 / NFR-2.1).
-  if (typeof BroadcastChannel === "undefined") {
-    console.warn("[mrcs-surfer-bridge] BroadcastChannel is not available in this browser. Live streaming disabled.");
-    return;
-  }
-
-  bc = new BroadcastChannel(CHANNEL);
-  bc.onmessage = function (ev) {
+  window.addEventListener("message", function (event) {
     try {
-      dispatch(ev.data);
-    } catch (e) {
-      console.error("[mrcs-surfer-bridge] Uncaught error in onmessage handler:", e);
-    }
-  };
+      const msg = event.data;
+      if (!msg || typeof msg.type !== "string") {
+        console.warn("[mrcs-surfer-bridge] Ignoring malformed message:", msg);
+        return;
+      }
 
-  console.log("[mrcs-surfer-bridge] Listening on BroadcastChannel '" + CHANNEL + "'");
+      // ping must reply to the specific sender window (cross-origin compatible).
+      if (msg.type === "ping") {
+        try {
+          event.source.postMessage({ type: "pong", sessionId: msg.sessionId }, event.origin);
+        } catch (e) {
+          console.error("[mrcs-surfer-bridge] Failed to send pong:", e);
+        }
+        return;
+      }
+
+      dispatch(msg);
+    } catch (e) {
+      console.error("[mrcs-surfer-bridge] Uncaught error in message handler:", e);
+    }
+  });
+
+  console.log("[mrcs-surfer-bridge] Listening for cross-origin postMessage from MRCS Studio");
 })();
