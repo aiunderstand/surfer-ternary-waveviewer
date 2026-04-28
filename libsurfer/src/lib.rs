@@ -2248,6 +2248,11 @@ impl SystemState {
                 self.items_to_expand.borrow_mut().push((item, levels));
             }
             Message::AddCharToPrompt(c) => *self.char_to_add_to_prompt.borrow_mut() = Some(c),
+            // FR-4.5: v1 no-op scaffold. Full incremental-append implementation deferred to v2
+            // when wellen gains live Signal/TimeTable append support.
+            Message::AppendWaveformFrame(_bytes) => {
+                info!("AppendWaveformFrame received (v1 no-op; incremental append deferred to v2)");
+            }
         }
         Some(())
     }

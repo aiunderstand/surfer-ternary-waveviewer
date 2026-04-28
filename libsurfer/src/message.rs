@@ -446,4 +446,10 @@ pub enum Message {
     /// Should only used for tests. Expands the parameter section so that one can test the rendering.
     ExpandParameterSection,
     AsyncDone(AsyncJob),
+    /// Append a raw MRCS-GHW frame section (SNP or CYC bytes) to the live waveform.
+    /// Injected programmatically by mrcs-surfer-bridge.js; cannot be serialised to state
+    /// files or sent via WCP/batch commands (FR-4.4). v1: no-op scaffold; fully implemented
+    /// in v2 when wellen gains incremental-append support (FR-4.5).
+    #[serde(skip)]
+    AppendWaveformFrame(Vec<u8>),
 }
