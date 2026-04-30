@@ -72,6 +72,10 @@
           const bytes = Array.from(new TextEncoder().encode(msg.scopeCommands));
           safeInject(JSON.stringify({ LoadCommandFromData: bytes }));
         }
+        if (msg.timeUnit) {
+          // msg.timeUnit is a Surfer TimeUnit serde variant string (e.g. "MilliSeconds").
+          safeInject(JSON.stringify({ SetTimeUnit: msg.timeUnit }));
+        }
         safeInject(JSON.stringify({ ZoomToFit: { viewport_idx: 0 } }));
         break;
 
