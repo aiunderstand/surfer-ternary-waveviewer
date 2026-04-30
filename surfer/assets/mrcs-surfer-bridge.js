@@ -10,12 +10,12 @@
 
   let bc = null;
   let titleSet = false;
-  let firstHeaderApplied = false;
+  let layoutApplied = false;
 
-  // Startup queue: holds message objects received before inject_message is available.
   const queue = [];
   let queueDrained = false;
   let pollTimer = null;
+  let layoutPollTimer = null;
 
   function isInjectReady() {
     return typeof inject_message === "function";
@@ -29,13 +29,30 @@
     }
   }
 
-  // FR-5: hide the side panel and top menu the first time MRCS Studio sends a header,
-  // so the freshly opened Surfer tab presents a clean waveform-only view.
+  // Hide the side panel and top menu unconditionally as soon as the WASM viewer is ready,
+  // regardless of whether MRCS Studio has connected yet. Gives the freshly opened Surfer tab
+  // a clean waveform-only layout from the moment it loads.
   function applyDefaultLayout() {
-    if (firstHeaderApplied) return;
-    firstHeaderApplied = true;
+    if (layoutApplied) return;
+    if (!isInjectReady()) return;
+    layoutApplied = true;
     safeInject(JSON.stringify({ SetSidePanelVisible: false }));
     safeInject(JSON.stringify({ SetMenuVisible: false }));
+    safeInject(JSON.stringify({ SetToolbarVisible: false }));
+  }
+
+  function scheduleLayoutPoll() {
+    const deadline = Date.now() + WASM_TIMEOUT_MS;
+    function tick() {
+      if (isInjectReady()) {
+        applyDefaultLayout();
+      } else if (Date.now() >= deadline) {
+        // give up silently — user can toggle panels manually
+      } else {
+        layoutPollTimer = setTimeout(tick, POLL_MS);
+      }
+    }
+    layoutPollTimer = setTimeout(tick, POLL_MS);
   }
 
   function applyMsg(msg) {
@@ -45,7 +62,6 @@
         break;
 
       case "header":
-        // Initial / probe-set-change reload: clear existing waveform state, then add scopes.
         if (!titleSet) {
           document.title = "Surfer – MRCS Live";
           titleSet = true;
@@ -56,12 +72,16 @@
           const bytes = Array.from(new TextEncoder().encode(msg.scopeCommands));
           safeInject(JSON.stringify({ LoadCommandFromData: bytes }));
         }
+        safeInject(JSON.stringify({ ZoomToFit: { viewport_idx: 0 } }));
         break;
 
       case "frame":
-        // Live update reload: KeepAvailable preserves displayed signals across reloads,
+        // Live update reload. KeepAvailable preserves displayed signals across reloads,
         // so we don't re-issue scope_add and we don't get duplicate signal entries.
         safeInject(JSON.stringify({ LoadFromData: [msg.data, "KeepAvailable"] }));
+        // Auto-fit the viewport so the newly appended timestep becomes visible without
+        // the user having to manually zoom out as the timeline grows.
+        safeInject(JSON.stringify({ ZoomToFit: { viewport_idx: 0 } }));
         break;
 
       case "reset":
@@ -121,7 +141,6 @@
       queue.push(msg);
       if (wasEmpty) schedulePoll();
     } else {
-      // Drop oldest non-header to keep latency bounded.
       const idx = queue.findIndex((m) => m.type === "frame");
       if (idx >= 0) queue.splice(idx, 1);
       queue.push(msg);
@@ -141,6 +160,19 @@
       console.error("[mrcs-surfer-bridge] Uncaught error in onmessage handler:", e);
     }
   };
+
+  // Notify any other tab that we're alive (helps MRCS Studio detect a freshly opened Surfer
+  // tab without waiting for its next ping). Sent on load and again on visibility change.
+  function postHello() {
+    try { bc.postMessage({ type: "hello" }); } catch { /* channel torn down */ }
+  }
+
+  window.addEventListener("beforeunload", () => {
+    try { bc.postMessage({ type: "bye" }); } catch { /* channel torn down */ }
+  });
+
+  scheduleLayoutPoll();
+  postHello();
 
   console.log("[mrcs-surfer-bridge] Listening on BroadcastChannel '" + CHANNEL + "'");
 })();
