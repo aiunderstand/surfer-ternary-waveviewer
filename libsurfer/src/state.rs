@@ -385,8 +385,12 @@ impl SystemState {
         }
 
         if !is_reload && let Some(waves) = &mut self.user.waves {
-            // Set time unit
-            self.user.wanted_timeunit = waves.inner.metadata().timescale.unit;
+            // Set time unit only if the user hasn't explicitly chosen one already (via
+            // SetTimeUnit, e.g. from the MRCS Studio bridge). Otherwise a Clear-mode
+            // reload would clobber the chosen unit on every refresh.
+            if matches!(self.user.wanted_timeunit, TimeUnit::None) {
+                self.user.wanted_timeunit = waves.inner.metadata().timescale.unit;
+            }
             // Possibly open state file load dialog
             if waves.source.sibling_state_file().is_some() {
                 self.update(Message::SuggestOpenSiblingStateFile);
