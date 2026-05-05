@@ -156,6 +156,15 @@
     return;
   }
 
+  // When a file is loaded via load_url, this is a standalone viewer session — not a live-
+  // streaming session from MRCS Studio. Skip the bridge entirely so panels stay visible and
+  // MRCS Studio (if open in another tab) is not triggered to push scope commands.
+  const _urlParams = new URLSearchParams(window.location.search);
+  if (_urlParams.has("load_url")) {
+    console.log("[mrcs-surfer-bridge] load_url detected — standalone file-load mode, bridge disabled.");
+    return;
+  }
+
   bc = new BroadcastChannel(CHANNEL);
   bc.onmessage = function (ev) {
     try {
