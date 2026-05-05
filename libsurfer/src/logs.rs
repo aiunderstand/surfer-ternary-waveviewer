@@ -185,11 +185,13 @@ pub fn start_logging() -> Result<()> {
     use tracing_subscriber::{Registry, fmt, layer::SubscriberExt};
     use wasm_tracing::WasmLayer;
 
+    // RUST_LOG is not settable in WASM, so the env fallback is always used.
+    // Default to "warn" for production web builds to keep the browser console quiet.
     let filter =
-        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
+        tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "warn".into());
     let subscriber = Registry::default()
         .with(fmt::layer().without_time().with_filter(filter.clone()))
-        .with(WasmLayer::default())
+        .with(WasmLayer::default().with_filter(filter.clone()))
         .with(EguiLogger {}.with_filter(filter));
 
     tracing::subscriber::set_global_default(subscriber).expect("unable to set global subscriber");
