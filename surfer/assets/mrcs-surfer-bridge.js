@@ -29,14 +29,13 @@
     }
   }
 
-  // Hide the side panel and top menu unconditionally as soon as the WASM viewer is ready,
-  // regardless of whether MRCS Studio has connected yet. Gives the freshly opened Surfer tab
-  // a clean waveform-only layout from the moment it loads.
+  // Set the initial layout unconditionally as soon as the WASM viewer is ready,
+  // regardless of whether MRCS Studio has connected yet.
   function applyDefaultLayout() {
     if (layoutApplied) return;
     if (!isInjectReady()) return;
     layoutApplied = true;
-    safeInject(JSON.stringify({ SetSidePanelVisible: false }));
+    safeInject(JSON.stringify({ SetSidePanelVisible: true }));
     safeInject(JSON.stringify({ SetMenuVisible: false }));
     safeInject(JSON.stringify({ SetToolbarVisible: false }));
   }
